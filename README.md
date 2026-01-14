@@ -1,5 +1,5 @@
 # betterPybricksClasses
-Modul koji poboljšava Pybricks klase i dodaje nove funkcionalnosti.
-# Značajke:
-- Klasa `BetterMotor` – Funkcije `BetterMotor.run_target()` i `BetterMotor.run_angle()` koriste prijašnje danu vrijednost `default_speed` ako nije postavljena vrijednost brzine.
-- Klasa `BetterDriveBase` – Parametar `turn_rate` u funkciji `BetterDriveBase.drive()` ima zadanu vrijednost `0`.
+A module that improves Pybricks classes and adds new functionality.
+# Features:
+- `BetterMotor` class – `BetterMotor.run_target()` and `BetterMotor.run_angle()` functions use the previously given `default_speed` value if no speed value is set.
+- `BetterDriveBase` class – The `turn_rate` parameter in the `BetterDriveBase.drive()` function has a default value of `0`.
