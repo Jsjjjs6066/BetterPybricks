@@ -2,7 +2,7 @@ from pybricks.pupdevices import Motor
 from pybricks.parameters import Direction, Stop
 from pybricks.robotics import DriveBase
 from pybricks.tools import StopWatch, wait
-from math import pi, tan
+from math import pi, tan, radians, sin, atan, degrees
 
 
 def warn(message):
@@ -141,6 +141,12 @@ class BetterDriveBase(DriveBase):
                              turn_rate, turn_acceleration)
         wait(50)
 
+def steer_ratio(motor_angle_deg, L, kingpin_dist):
+    m = radians(motor_angle_deg)
+    rack_displacement = L * sin(m)
+    wheel_angle = degrees(atan(rack_displacement / kingpin_dist))
+    ratio = motor_angle_deg / wheel_angle
+    return ratio
 
 class CarDriveBase:
     def __init__(self, drive_motor, steer_motor, wheel_diameter,
@@ -164,21 +170,41 @@ class CarDriveBase:
     def brake(self):
         self.drive_motor.brake()
 
-    def straight(self, dist, speed=None):
+    def _straight(self, dist, speed=None):
         if speed is None:
             speed = self.default_speed
         o = self.wheel_diameter * pi
-        self.drive_motor.run_angle(speed, dist / o)
-        while not self.drive_motor.done():
-            wait(0.05)
+        degrees = dist / o * 360
+        start = self.drive_motor.angle()
+        self.drive_motor.run(speed)
+        while abs(self.drive_motor.angle() - start) < abs(degrees):
+            wait(5)
+        self.drive_motor.brake()
+
+    def straight(self, dist, speed=None):
+        self.steer_motor.run_target(self.default_steer_speed, 0)
+        self._straight(dist, speed)
 
     def turn(self, target_deg, step_deg, speed_steer=None, speed_drive=None):
         if speed_steer is None:
-            speed_steer = self.default_speed_steer
+            speed_steer = self.default_steer_speed
         if speed_drive is None:
             speed_drive = self.default_speed
-        dist = (target_deg * self.axle_track * pi) / (tan(step_deg) * 180)
-        angle = self.steer_motor.angle()
-        self.steer_motor.run_target(speed_steer, step_deg)
-        self.straight(dist * 1000, speed_drive)
-        self.steer_motor.run_target(speed_steer, angle)
+
+        axle_track_mm = self.axle_track * 10  # cm to mm
+        dist = (target_deg * axle_track_mm * pi) / (tan(radians(step_deg)) * 180)
+
+        saved_angle = self.steer_motor.angle()
+        self.steer_motor.run_target(speed_steer, step_deg * steer_ratio(step_deg, 16, 60))
+        self._straight(dist, speed_drive)
+        self.steer_motor.run_target(speed_steer, saved_angle)
+    # def turn(self, target_deg, step_deg, speed_steer=None, speed_drive=None):
+    #     if speed_steer is None:
+    #         speed_steer = self.default_speed_steer
+    #     if speed_drive is None:
+    #         speed_drive = self.default_speed
+    #     dist = (target_deg * self.axle_track * pi) / (tan(step_deg) * 180)
+    #     angle = self.steer_motor.angle()
+    #     self.steer_motor.run_target(speed_steer, step_deg)
+    #     self.straight(dist * 1000, speed_drive)
+    #     self.steer_motor.run_target(speed_steer, angle)
