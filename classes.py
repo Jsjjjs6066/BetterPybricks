@@ -2,7 +2,12 @@ from pybricks.pupdevices import Motor
 from pybricks.parameters import Direction, Stop
 from pybricks.robotics import DriveBase
 from pybricks.tools import StopWatch, wait
-from math import pi, tan, radians, sin, atan, degrees
+from pybricks.hubs import PrimeHub
+try:
+    from pybricks import hubs
+except ImportError:
+    pass
+from math import ceil, pi, tan, radians, sin, atan, degrees
 
 
 def warn(message):
@@ -141,63 +146,108 @@ class BetterDriveBase(DriveBase):
                              turn_rate, turn_acceleration)
         wait(50)
 
-def steer_ratio(motor_angle_deg, L, kingpin_dist):
-    m = radians(motor_angle_deg)
-    rack_displacement = L * sin(m)
-    wheel_angle = degrees(atan(rack_displacement / kingpin_dist))
-    ratio = motor_angle_deg / wheel_angle
-    return ratio
-
 class CarDriveBase:
     def __init__(self, drive_motor, steer_motor, wheel_diameter,
-                 axle_track, default_speed, default_steer_speed):
-        # type: (Motor, Motor, float, float, int, int) -> None
+                 axle_track, default_speed, default_steer_speed, hub):
         self.drive_motor = drive_motor  # type: Motor
         self.steer_motor = steer_motor  # type: Motor
         self.wheel_diameter = wheel_diameter  # type: float
         self.axle_track = axle_track  # type: float
         self.default_speed = default_speed  # type: int
         self.default_steer_speed = default_steer_speed  # type: int
+        self.hub = hub  # type: PrimeHub
+        self.gyro = False
+        self.running = False
+
+    def use_gyro(self, use):
+        self.hub.imu.reset_heading(0)
+        self.gyro = use
+        
+    def reset_gyro(self):
+        if self.gyro:
+            self.hub.imu.reset_heading(0)
+        
+    def correct(self, angle=0, step=30, pr=False):
+        if self.gyro:
+            if pr:
+                print(max(-abs(step), min(abs(step), 15 * ceil((angle - self.hub.imu.heading()) / 15))))
+            self.steer_motor.run_target(self.default_steer_speed, max(-abs(step), min(abs(step), 15 * ceil((angle - self.hub.imu.heading()) / 15))), wait=False)
 
     def drive(self, speed=None):
         if speed is None:
             speed = self.default_speed
-        self.drive_motor.drive(speed)
+        self.drive_motor.run(speed)
+        self.running = True
 
     def stop(self):
         self.drive_motor.stop()
+        self.running = False
 
     def brake(self):
         self.drive_motor.brake()
+        self.running = False
 
-    def _straight(self, dist, speed=None):
+    def _straight(self, dist, turn_rate=0, speed=None, _gyro=True):
+        self.running = True
         if speed is None:
             speed = self.default_speed
         o = self.wheel_diameter * pi
         degrees = dist / o * 360
+        speed = abs(speed) * (1 if degrees > 0 else -1)
         start = self.drive_motor.angle()
         self.drive_motor.run(speed)
         while abs(self.drive_motor.angle() - start) < abs(degrees):
+            if self.gyro and _gyro:
+                self.correct(turn_rate)
             wait(5)
         self.drive_motor.brake()
+        self.running = False
 
-    def straight(self, dist, speed=None):
+    def straight(self, dist, turn_rate=0, speed=None):
         self.steer_motor.run_target(self.default_steer_speed, 0)
-        self._straight(dist, speed)
+        self._straight(dist, turn_rate, speed)
 
-    def turn(self, target_deg, step_deg, speed_steer=None, speed_drive=None):
+    def turn(self, target_deg, step_deg, tolerance=1.5, speed_steer=None, speed_drive=None):
+        if target_deg == 0:
+            return
+        if step_deg == 0:
+            self.steer_motor.run_target(self.default_steer_speed, 0)
+            return
+        ta = target_deg / abs(target_deg)
+        sa = step_deg / abs(step_deg)
         if speed_steer is None:
             speed_steer = self.default_steer_speed
         if speed_drive is None:
             speed_drive = self.default_speed
 
         axle_track_mm = self.axle_track * 10  # cm to mm
-        dist = (target_deg * axle_track_mm * pi) / (tan(radians(step_deg)) * 180)
+        dist = (ta * (abs(target_deg) + abs(step_deg)) * axle_track_mm * pi) / (tan(radians(abs(step_deg))) * 180)
+        print(dist, target_deg, step_deg, self.steer_motor.angle())
 
-        saved_angle = self.steer_motor.angle()
-        self.steer_motor.run_target(speed_steer, step_deg * steer_ratio(step_deg, 16, 60))
-        self._straight(dist, speed_drive)
-        self.steer_motor.run_target(speed_steer, saved_angle)
+        self.steer_motor.run_target(speed_steer, step_deg)
+        self._straight(dist, speed_drive, _gyro=False)
+        if self.gyro:
+            started = False
+            print(target_deg, tolerance)
+            i = 0
+            while abs(self.hub.imu.heading()) - abs(target_deg) > tolerance:
+                if i == 0:
+                    print(self.hub.imu.heading())
+                if not started:
+                    self.drive(ta * speed_drive)
+                started = True
+                self.correct(sa * target_deg, step_deg, pr=i == 0)
+                wait(5)
+                i += 1
+                i %= 50
+            # wait(50)
+            self.brake()
+            print("-------------------------------------------")
+            print(self.hub.imu.heading())
+            self.hub.imu.reset_heading(self.hub.imu.heading() - sa * target_deg)
+            print(self.hub.imu.heading())
+            print("-------------------------------------------")
+        # self.steer_motor.run_target(speed_steer, saved_angle)
     # def turn(self, target_deg, step_deg, speed_steer=None, speed_drive=None):
     #     if speed_steer is None:
     #         speed_steer = self.default_speed_steer
