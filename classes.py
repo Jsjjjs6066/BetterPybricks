@@ -7,7 +7,7 @@ try:
     from pybricks import hubs
 except ImportError:
     pass
-from math import ceil, pi, tan, radians, sin, atan, degrees
+from math import ceil, pi, tan, radians, atan, degrees
 
 
 def warn(message):
@@ -173,6 +173,9 @@ class CarDriveBase:
                 print(max(-abs(step), min(abs(step), 15 * ceil((angle - self.hub.imu.heading()) / 15))))
             self.steer_motor.run_target(self.default_steer_speed, max(-abs(step), min(abs(step), 15 * ceil((angle - self.hub.imu.heading()) / 15))), wait=False)
 
+    def distance(self):
+        return self.drive_motor.angle() * self.wheel_diameter * pi / 360
+
     def drive(self, speed=None):
         if speed is None:
             speed = self.default_speed
@@ -230,7 +233,7 @@ class CarDriveBase:
             started = False
             print(target_deg, tolerance)
             i = 0
-            while abs(self.hub.imu.heading()) - abs(target_deg) > tolerance:
+            while abs(abs(self.hub.imu.heading()) - abs(target_deg)) > tolerance:
                 if i == 0:
                     print(self.hub.imu.heading())
                 if not started:
@@ -247,14 +250,14 @@ class CarDriveBase:
             self.hub.imu.reset_heading(self.hub.imu.heading() - sa * target_deg)
             print(self.hub.imu.heading())
             print("-------------------------------------------")
-        # self.steer_motor.run_target(speed_steer, saved_angle)
-    # def turn(self, target_deg, step_deg, speed_steer=None, speed_drive=None):
-    #     if speed_steer is None:
-    #         speed_steer = self.default_speed_steer
-    #     if speed_drive is None:
-    #         speed_drive = self.default_speed
-    #     dist = (target_deg * self.axle_track * pi) / (tan(step_deg) * 180)
-    #     angle = self.steer_motor.angle()
-    #     self.steer_motor.run_target(speed_steer, step_deg)
-    #     self.straight(dist * 1000, speed_drive)
-    #     self.steer_motor.run_target(speed_steer, angle)
+    
+    def turn_radius(self, target_deg, radius, tolerance=1.5, speed_steer=None, speed_drive=None):
+        axle_track_mm = self.axle_track * 10  # cm to mm
+
+        step_deg = degrees(2 * atan(axle_track_mm / (2 * radius)))
+
+        # Preserve the sign of target_deg
+        if target_deg < 0:
+            step_deg = -step_deg
+
+        self.turn(target_deg, step_deg, tolerance, speed_steer, speed_drive)
